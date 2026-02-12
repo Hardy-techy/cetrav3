@@ -18,7 +18,8 @@ export default function Web3Provider({ children }) {
 
   // Get Push Chain wallet from UI-kit (for UI display)
   const pushWallet = usePushWalletContext();
-  const pushClient = usePushChainClient();
+  const { pushChainClient: uiKitClient } = usePushChainClient();
+  const pushClient = uiKitClient; // Alias for backward compatibility if needed, but we'll use uiKitClient explicitly
 
   // Initialize with empty hooks to prevent null errors
   const [web3Api, setWeb3Api] = useState(() => ({
@@ -85,7 +86,9 @@ export default function Web3Provider({ children }) {
   useEffect(() => {
     let newAccount = null;
 
-    if (pushChainContext?.account && pushChainContext?.isUniversal) {
+    if (uiKitClient?.universal?.account) {
+      newAccount = uiKitClient.universal.account.address;
+    } else if (pushChainContext?.account && pushChainContext?.isUniversal) {
       newAccount = pushChainContext.account;
     } else if (pushWallet?.universalAccount?.address) {
       newAccount = pushWallet.universalAccount.address;
@@ -105,6 +108,7 @@ export default function Web3Provider({ children }) {
       setConnectedAccountState(newAccount);
     }
   }, [
+    uiKitClient?.universal?.account,
     pushChainContext?.account,
     pushChainContext?.isUniversal,
     pushWallet?.universalAccount,
@@ -181,13 +185,14 @@ export default function Web3Provider({ children }) {
 
     console.log('🚀 Sending transaction via Push Chain Wallet Kit', { from: fromAddress, to, data });
 
-    // PRIORITIZE the client from our custom provider, which we know is initialized with universal signer
-    const client = pushChainContext?.pushClient || pushClient;
+    // PRIORITIZE the client from UI KIT (Official) over our custom one
+    const client = uiKitClient || pushChainContext?.pushClient || pushClient;
 
-    console.log('🚀 Sending transaction via Push Chain Wallet Kit', {
+    console.log('🚀 Transaction Client Source:', {
       from: fromAddress,
-      clientExists: !!client,
-      hasUniversal: !!client?.universal
+      usingUIKit: !!uiKitClient,
+      usingCustom: !!pushChainContext?.pushClient,
+      clientReady: !!client
     });
 
     // 1. Try Push Client (Universal / Wallet Kit)
