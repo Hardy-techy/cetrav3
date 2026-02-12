@@ -176,8 +176,17 @@ export default function Web3Provider({ children }) {
 
     console.log('🚀 Sending transaction via Push Chain Wallet Kit', { from: fromAddress, to, data });
 
+    // PRIORITIZE the client from our custom provider, which we know is initialized with universal signer
+    const client = pushChainContext?.pushClient || pushClient;
+
+    console.log('🚀 Sending transaction via Push Chain Wallet Kit', {
+      from: fromAddress,
+      clientExists: !!client,
+      hasUniversal: !!client?.universal
+    });
+
     // 1. Try Push Client (Universal / Wallet Kit)
-    if (pushClient?.universal) {
+    if (client?.universal) {
       const txOptions = {
         to: to,
         data: data,
@@ -185,7 +194,7 @@ export default function Web3Provider({ children }) {
       };
 
       try {
-        return await pushClient.universal.sendTransaction(txOptions);
+        return await client.universal.sendTransaction(txOptions);
       } catch (error) {
         console.error("Push Chain Wallet Kit Error:", error);
         throw error;
@@ -193,7 +202,7 @@ export default function Web3Provider({ children }) {
     }
 
     // 2. Fallback: If pushClient is not ready, we cannot sign.
-    console.error("Push Client state:", { pushClient, isUniversal: pushClient?.universal });
+    console.error("Push Client state:", { client, isUniversal: client?.universal });
     throw new Error("Push Chain Wallet Kit is not fully initialized. Please refresh or reconnect.");
   };
 
