@@ -82,8 +82,11 @@ export default function PushChainProvider({ children }) {
 
         const pushChainClient = await PushChain.initialize(universalSigner, {
           network: PushChain.CONSTANTS.PUSH_NETWORK.TESTNET,
-          rpcUrl: absoluteRpc,
-          rpcUrls: [absoluteRpc]
+          rpcUrls: {
+            [PushChain.CONSTANTS.PUSH_NETWORK.TESTNET]: [absoluteRpc],
+            'eip155:42101': [absoluteRpc],
+            '42101': [absoluteRpc]
+          }
         });
 
         if (mounted) {

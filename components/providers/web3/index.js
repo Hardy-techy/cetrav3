@@ -194,24 +194,26 @@ export default function Web3Provider({ children }) {
     if (client?.universal) {
       // Clean Hex Address
       const cleanTo = to.trim().toLowerCase();
-      console.log("🚀 Bypassing SDK, sending direct 'eth_sendTransaction' to:", cleanTo);
+      console.log("🚀 Sending transaction via SDK to:", cleanTo);
 
       const txParams = {
-        from: fromAddress,
         to: cleanTo,
         data: data,
-        value: "0x0", // Standard RPC Hex for 0
+        value: 0n, // Viem/SDK expects BigInt
       };
 
       try {
-        const txHash = await provider.request({
-          method: 'eth_sendTransaction',
-          params: [txParams],
-        });
-        console.log("✅ Direct Transaction Hash:", txHash);
-        return { transactionHash: txHash };
+        // Now that PushChainProvider is fixed with correct rpcUrls map, this should work!
+        const txResponse = await client.universal.sendTransaction(txParams);
+        console.log("✅ SDK Transaction Response:", txResponse);
+
+        // SDK returns object with hash, or we might need to wait? 
+        // Docs say: returns Promise<TransactionReceipt> (actually TxResponse which has .wait())
+        // My previous code expected { transactionHash: ... } or compatible object
+
+        return { transactionHash: txResponse.hash };
       } catch (error) {
-        console.error("Direct Transaction Failed:", error);
+        console.error("Push SDK Transaction Failed:", error);
         throw error;
       }
     }
