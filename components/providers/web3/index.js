@@ -174,6 +174,11 @@ export default function Web3Provider({ children }) {
     const data = method.encodeABI();
     const to = method._parent._address;
 
+    if (!to) {
+      console.error("❌ Transaction Error: 'to' address is missing", { method, to });
+      throw new Error(`Invalid 'to' address. Contract address is undefined.`);
+    }
+
     console.log('🚀 Sending transaction via Push Chain Wallet Kit', { from: fromAddress, to, data });
 
     // PRIORITIZE the client from our custom provider, which we know is initialized with universal signer
