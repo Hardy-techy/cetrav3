@@ -177,7 +177,7 @@ export default function Web3Provider({ children }) {
     console.log('🚀 Sending transaction via Push Chain Wallet Kit', { from: fromAddress, to, data });
 
     // 1. Try Push Client (Universal / Wallet Kit)
-    if (pushClient) {
+    if (pushClient?.universal) {
       const txOptions = {
         to: to,
         data: data,
