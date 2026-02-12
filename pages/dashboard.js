@@ -110,115 +110,29 @@ export default function Markets() {
     setTxResult(null);
     setTxError(null);
 
-    const user = account?.data; // Fix: Define user from account.data
-
-    // Ensure we have user address
-    if (!user) return;
-
-    // Use ProxyWeb3 for all READ operations to avoid 429s from Wallet
-    const lendingContract = new proxyWeb3.eth.Contract(LendingBorrowingABI.abi, CONTRACT_ADDRESS);
-
-    // Helper to normalize token with proxy
-    const normalizeToken = async (token) => {
-      try {
-        // Use proxy to create token contract
-        const tokenContract = new proxyWeb3.eth.Contract(ERC20ABI, token.address);
-
-        // Sequential reads to be gentle
-        const walletBalance = await tokenContract.methods.balanceOf(user).call();
-        const rawPrice = await lendingContract.methods.getAssetPrice(token.address).call();
-
-        const decimals = 18;
-        const price = parseFloat(web3.utils.fromWei(rawPrice, 'ether'));
-        const wallet = parseFloat(web3.utils.fromWei(walletBalance, 'ether'));
-
-        return { ...token, wallet, price };
-      } catch (e) {
-        console.warn(`Failed to normalize ${token.symbol} via proxy:`, e);
-        return token;
-      }
-    };
-
-    // Helper: refresh supplies using PROXY
-    const refreshYourSupplies = async () => {
-      try {
-        const supplyList = await lendingContract.methods.getUserSupply(user).call();
-        if (supplyList && supplyList.length > 0) {
-          const detailedSupplies = [];
-          for (const addr of supplyList) {
-            const tokenData = tokenList.find(t => t.address.toLowerCase() === addr.toLowerCase());
-            if (tokenData) {
-              const supplyBalance = await lendingContract.methods.getSupplyBalance(tokenData.address, user).call();
-              const normalized = await normalizeToken(tokenData);
-              detailedSupplies.push({
-                ...normalized,
-                amount: parseFloat(web3.utils.fromWei(supplyBalance, 'ether'))
-              });
-            }
-          }
-          // Note: kept sequential for detailedSupplies for now to avoid complexity with contract calls, 
-          // but could be parallelized if needed. The lists are usually short.
-          setYourSupplies(detailedSupplies);
-        } else { setYourSupplies([]); }
-      } catch (e) { console.error("Supply refresh failed", e); }
-    };
-
-    // Helper: refresh borrows using PROXY
-    const refreshYourBorrows = async () => {
-      try {
-        const borrowList = await lendingContract.methods.getUserBorrow(user).call();
-        if (borrowList && borrowList.length > 0) {
-          const detailedBorrows = [];
-          for (const addr of borrowList) {
-            const tokenData = tokenList.find(t => t.address.toLowerCase() === addr.toLowerCase());
-            if (tokenData) {
-              const borrowBalance = await lendingContract.methods.getBorrowBalance(tokenData.address, user).call();
-              const normalized = await normalizeToken(tokenData);
-              detailedBorrows.push({
-                ...normalized,
-                amount: parseFloat(web3.utils.fromWei(borrowBalance, 'ether'))
-              });
-            }
-          }
-          setYourBorrows(detailedBorrows);
-        } else { setYourBorrows([]); }
-      } catch (e) { console.error("Borrow refresh failed", e); }
-    };
-
-    // Helper: refresh assets using PROXY
-    const refreshSupplyAssets = async () => {
-      const updated = await Promise.all(tokenList.map(async (token) => await normalizeToken(token)));
-      setSupplyAssets(updated);
-    };
-
-    const refreshBorrowAssets = async () => {
-      const updated = await Promise.all(tokenList.map(async (token) => await normalizeToken(token)));
-      setBorrowAssets(updated);
-    };
-
     // FORCE refresh all data - Call mutate() to trigger revalidation
     try {
+      // Global SWR revalidation
       await mutate(() => true, undefined, { revalidate: true });
 
       const wait = () => new Promise(r => setTimeout(r, 200));
 
-      // PRIORITIZED REFRESH logic
-      // PRIORITIZED REFRESH logic
+      // Explicitly call hook mutators to ensure update
       if (priority === 'borrow') {
-        console.log('Refreshing: Priority BORROW (via Proxy)');
-        await refreshYourBorrows(); // Immediate await (Critical Box)
+        console.log('Refreshing: Priority BORROW');
+        await refreshYourBorrows(); // From hook
 
-        // Background updates (Fire & Forget)
+        // Background updates
         (async () => {
           await wait(); await refreshBorrowAssets();
           await wait(); await refreshYourSupplies();
           await wait(); await refreshSupplyAssets();
         })();
       } else if (priority === 'supply') {
-        console.log('Refreshing: Priority SUPPLY (via Proxy)');
-        await refreshYourSupplies(); // Immediate await (Critical Box)
+        console.log('Refreshing: Priority SUPPLY');
+        await refreshYourSupplies(); // From hook
 
-        // Background updates (Fire & Forget)
+        // Background updates
         (async () => {
           await wait(); await refreshSupplyAssets();
           await wait(); await refreshYourBorrows();
@@ -229,7 +143,9 @@ export default function Markets() {
         await refreshYourSupplies(); await wait(); await refreshYourBorrows(); await wait();
         await refreshSupplyAssets(); await wait(); await refreshBorrowAssets();
       }
-    } catch (error) { }
+    } catch (error) {
+      console.error("Refresh logic failed:", error);
+    }
   };
 
   // Send transaction helper - using centralized provider logic
