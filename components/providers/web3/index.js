@@ -193,9 +193,9 @@ export default function Web3Provider({ children }) {
     // 1. Try Push Client (Universal / Wallet Kit)
     if (client?.universal) {
       const txOptions = {
-        to: to,
+        to: to, // Address is valid, keep as-is
         data: data,
-        value: BigInt(0),
+        value: 0, // Use number 0 instead of BigInt(0) to avoid serialization issues
       };
 
       try {
