@@ -192,8 +192,15 @@ export default function Web3Provider({ children }) {
 
     // 1. Try Push Client (Universal / Wallet Kit)
     if (client?.universal) {
+      // Format as CAIP-10: eip155:42101:0xAddress
+      const chainId = pushChainContext?.chainId ? parseInt(pushChainContext.chainId).toString() : '42101';
+      const cleanChainId = chainId.replace('eip155:', '');
+      const caipTo = `eip155:${cleanChainId}:${to}`;
+
+      console.log("🚀 Formatting as CAIP-10 for Universal Signer:", caipTo);
+
       const txOptions = {
-        to: to.toLowerCase(), // Force lowercase to avoid checksum/casing RPC errors
+        to: caipTo,
         data: data,
         value: 0,
       };
