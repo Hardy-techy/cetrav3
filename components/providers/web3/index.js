@@ -86,16 +86,14 @@ export default function Web3Provider({ children }) {
   useEffect(() => {
     let newAccount = null;
 
-    if (uiKitClient?.universal?.account) {
-      newAccount = uiKitClient.universal.account.address;
-    } else if (pushChainContext?.account && pushChainContext?.isUniversal) {
-      newAccount = pushChainContext.account;
-    } else if (pushWallet?.universalAccount?.address) {
+    if (pushWallet?.universalAccount?.address) {
       newAccount = pushWallet.universalAccount.address;
     } else if (pushWallet?.universalAccount?.account) {
       newAccount = pushWallet.universalAccount.account;
     } else if (pushWallet?.universalAccount && typeof pushWallet.universalAccount === 'string') {
       newAccount = pushWallet.universalAccount;
+    } else if (pushChainContext?.account && pushChainContext?.isUniversal) {
+      newAccount = pushChainContext.account;
     } else if (pushWallet?.account?.address) {
       newAccount = pushWallet.account.address;
     } else if (pushWallet?.account && typeof pushWallet.account === 'string') {
@@ -108,7 +106,6 @@ export default function Web3Provider({ children }) {
       setConnectedAccountState(newAccount);
     }
   }, [
-    uiKitClient?.universal?.account,
     pushChainContext?.account,
     pushChainContext?.isUniversal,
     pushWallet?.universalAccount,
