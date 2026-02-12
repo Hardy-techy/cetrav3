@@ -192,22 +192,9 @@ export default function Web3Provider({ children }) {
       }
     }
 
-    // 2. Try Universal Signer Context (Alternative via SDK)
-    if (pushChainContext?.universalSigner) {
-      try {
-        const tx = {
-          to: to,
-          data: data,
-          value: 0
-        };
-        return await pushChainContext.universalSigner.sendTransaction(tx);
-      } catch (error) {
-        console.error("Push Chain Universal Signer Error:", error);
-        throw error;
-      }
-    }
-
-    throw new Error("Push Chain Wallet Kit not initialized. Please connect your wallet.");
+    // 2. Fallback: If pushClient is not ready, we cannot sign.
+    console.error("Push Client state:", { pushClient, isUniversal: pushClient?.universal });
+    throw new Error("Push Chain Wallet Kit is not fully initialized. Please refresh or reconnect.");
   };
 
   // Memoize the context value to prevent unnecessary re-renders
