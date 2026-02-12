@@ -324,17 +324,50 @@ export default function Web3Provider({ children }) {
       return result;
     }
 
-    // Standard web3 send fallback
-    const sendOptions = { from: fromAddress };
-    if (gasPrice) sendOptions.gasPrice = gasPrice;
-    if (nonce !== undefined) sendOptions.nonce = nonce;
+    // Standard Web3 / MetaMask Fallback
+    // Since 'contract' is read-only, we MUST use provider.request() to sign
+    const data = method.encodeABI();
+    const to = method._parent._address;
 
-    const receipt = await method.send(sendOptions);
+    const txParams = {
+      from: fromAddress,
+      to: to,
+      data: data,
+    };
 
-    // Wait for blockchain state to propagate
+    if (gasPrice) txParams.gasPrice = parseInt(gasPrice).toString(16); // Convert to Hex for RPC
+    if (nonce !== undefined) txParams.nonce = parseInt(nonce).toString(16);
+
+    console.log('Sending standard transaction via Wallet:', txParams);
+
+    const txHash = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [txParams],
+    });
+
+    console.log('Standard Transaction sent, hash:', txHash);
+
+    // Wait for transaction to be mined using PROXY WEB3 (Reliable)
+    let receipt = null;
+    let attempts = 0;
+    const maxAttempts = 60;
+
+    while (!receipt && attempts < maxAttempts) {
+      receipt = await proxyWeb3.eth.getTransactionReceipt(txHash);
+      if (!receipt) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      }
+    }
+
+    if (!receipt) {
+      throw new Error('Transaction not mined after 60 seconds (checked via Proxy)');
+    }
+
+    // Wait additional 2 seconds for blockchain state to propagate
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    return receipt;
+    return { transactionHash: txHash, ...receipt };
   };
 
   // Memoize the context value to prevent unnecessary re-renders
