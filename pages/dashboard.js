@@ -23,7 +23,7 @@ import { trackPromise } from 'react-promise-tracker';
 export default function Markets() {
   const router = useRouter();
   const { mutate: globalMutate } = useSWRConfig(); // Global SWR cache control
-  const { requireInstall, isLoading, connect, contract, web3, isUniversal, chainId, connectedAccount, pushChainContext } = useWeb3();
+  const { requireInstall, isLoading, connect, contract, web3, isUniversal, chainId, connectedAccount, pushChainContext, sendTransaction: providerSendTransaction } = useWeb3();
   const { account } = useAccount();
   const user = account?.data;
   const { tokens, mutate: refreshSupplyAssets, isValidating: isLoadingSupply } = useSupplyAssets();
@@ -232,164 +232,9 @@ export default function Markets() {
     } catch (error) { }
   };
 
-  // Send transaction helper - waits for confirmation on ALL paths
+  // Send transaction helper - using centralized provider logic
   const sendTransaction = async (method, fromAddress) => {
-    const isPushChain = chainId === '0xa475' || parseInt(chainId, 16) === 42101;
-
-    if (isPushChain) {
-      const data = method.encodeABI();
-      const to = method._parent._address;
-
-      console.log('Sending transaction on PushChain:', {
-        from: fromAddress,
-        to: to,
-        data: data.substring(0, 50) + '...',
-        chainId: chainId
-      });
-
-      try {
-        // 🛡️ GAS & PRICE ESTIMATION VIA PROXY (Bypasses Wallet Rate Limits)
-        let gasLimitHex = '0x5B8D80'; // Default 6M fallback
-        let gasPriceHex = undefined; // Let wallet decide if fetch fails
-
-        try {
-          // Use PROXY for estimatedGas and getGasPrice to avoid 429s
-          const [estimatedGas, currentGasPrice] = await Promise.all([
-            proxyWeb3.eth.estimateGas({
-              from: fromAddress,
-              to: to,
-              data: data
-            }),
-            proxyWeb3.eth.getGasPrice()
-          ]);
-
-          console.log('🔍 Proxy Gas Estimate:', estimatedGas);
-          console.log('🔍 Proxy Gas Price:', currentGasPrice);
-
-          // Add 200% buffer (2x) and Enforce Minimum 1M Gas
-          const gasWithBuffer = Math.max(Math.floor(Number(estimatedGas) * 2), 1000000);
-          gasLimitHex = '0x' + gasWithBuffer.toString(16);
-
-          // Add 10% tip to gas price for speed
-          const adjustedPrice = proxyWeb3.utils.toBN(currentGasPrice).mul(proxyWeb3.utils.toBN(110)).div(proxyWeb3.utils.toBN(100));
-          gasPriceHex = '0x' + adjustedPrice.toString(16);
-
-          console.log('✅ Using Proxy-calc params:', { gas: gasLimitHex, gasPrice: gasPriceHex });
-
-        } catch (gasError) {
-          console.warn('⚠️ Proxy gas estimation failed, falling back to safe defaults:', gasError);
-        }
-
-        const txParams = {
-          from: fromAddress,
-          to: to,
-          data: data,
-          gas: gasLimitHex,
-        };
-
-        if (gasPriceHex) {
-          txParams.gasPrice = gasPriceHex;
-        }
-
-        // Send 'blind' transaction to wallet - it just signs
-        const txHash = await window.ethereum.request({
-          method: 'eth_sendTransaction',
-          params: [txParams],
-        });
-
-        console.log('Transaction sent, hash:', txHash);
-
-        // Wait for transaction to be mined using PROXY WEB3 (Reliable)
-        let receipt = null;
-        let attempts = 0;
-        const maxAttempts = 60; // 60 seconds max
-
-        while (!receipt && attempts < maxAttempts) {
-          receipt = await proxyWeb3.eth.getTransactionReceipt(txHash);
-          if (!receipt) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            attempts++;
-          }
-        }
-
-        if (!receipt) {
-          throw new Error('Transaction not mined after 60 seconds (checked via Proxy)');
-        }
-
-        // Wait additional 2 seconds for blockchain state to propagate
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        console.log('Transaction receipt:', receipt);
-        return { transactionHash: txHash, ...receipt };
-      } catch (error) {
-        console.error('PushChain transaction error:', error);
-        throw error;
-      }
-    }
-
-    // Helper to get gas price and nonce safely via our proxy
-    let gasPrice = undefined;
-    let nonce = undefined;
-
-    try {
-      // Use PROXY WEB3 for these checks to ensure they succeed
-      const [price, txCount] = await Promise.all([
-        proxyWeb3.eth.getGasPrice(),
-        proxyWeb3.eth.getTransactionCount(fromAddress)
-      ]);
-
-      // Gas Price: Add small buffer (10%)
-      const gasPriceBN = proxyWeb3.utils.toBN(price);
-      gasPrice = gasPriceBN.mul(proxyWeb3.utils.toBN(110)).div(proxyWeb3.utils.toBN(100)).toString();
-
-      // Nonce
-      nonce = txCount;
-
-      console.log('⛽ Pre-fetched Data (via Proxy):', { gasPrice, nonce });
-    } catch (e) {
-      console.warn('Failed to pre-fetch tx data via proxy:', e);
-    }
-
-    if (isUniversal && pushChainContext?.pushClient) {
-      console.log("🔐 Signing via PushChain Universal Kit (Gasless/Universal Mode)");
-      const data = method.encodeABI();
-
-      const txOptions = {
-        to: method._parent._address,
-        data: data,
-        value: BigInt(0),
-        gasLimit: BigInt(2000000), // Increased from 500k
-      };
-
-      if (gasPrice) {
-        txOptions.gasPrice = BigInt(gasPrice);
-        txOptions.maxFeePerGas = BigInt(gasPrice);
-        txOptions.maxPriorityFeePerGas = BigInt(gasPrice);
-      }
-
-      if (nonce !== undefined) {
-        txOptions.nonce = BigInt(nonce);
-      }
-
-      const result = await pushChainContext.pushClient.universal.sendTransaction(txOptions);
-
-      // Wait for blockchain state to update
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      return result;
-    }
-
-    // Standard web3 send
-    const sendOptions = { from: fromAddress };
-    if (gasPrice) sendOptions.gasPrice = gasPrice;
-    if (nonce !== undefined) sendOptions.nonce = nonce;
-
-    const receipt = await method.send(sendOptions);
-
-    // Wait for blockchain state to propagate
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    return receipt;
+    return await providerSendTransaction(method, fromAddress);
   };
 
   const handleSupply = async (token, value) => {

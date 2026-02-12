@@ -5,6 +5,7 @@ import ModalSupply from "./ModalSupply";
 import ERC20 from "../../abis/ADE.json";
 import LARToken from "../../abis/LARToken.json";
 import { trackPromise } from "react-promise-tracker";
+import { useWeb3 } from "../providers/web3";
 
 export default function TokenInfo({
   token,
@@ -15,6 +16,7 @@ export default function TokenInfo({
   yourSupplies,
   yourBorrows,
 }) {
+  const { sendTransaction } = useWeb3();
   const tokenImages = {
     USDC: "/usdc.png",
     USDT: "/usdtt.png",
@@ -51,15 +53,17 @@ export default function TokenInfo({
 
     try {
       await trackPromise(
-        tokenInst.methods
-          .approve(contract.options.address, web3.utils.toWei(value.toString()))
-          .send({ from: account.data })
+        sendTransaction(
+          tokenInst.methods.approve(contract.options.address, web3.utils.toWei(value.toString())),
+          account.data
+        )
       );
 
       const supplyResult = await trackPromise(
-        contract.methods
-          .lend(tokenInst.options.address, web3.utils.toWei(value.toString()))
-          .send({ from: account.data })
+        sendTransaction(
+          contract.methods.lend(tokenInst.options.address, web3.utils.toWei(value.toString())),
+          account.data
+        )
       );
 
       const larTokenBalance = await larToken.methods
@@ -67,9 +71,10 @@ export default function TokenInfo({
         .call();
 
       await trackPromise(
-        larToken.methods
-          .approve(contract.options.address, web3.utils.toWei(larTokenBalance.toString()))
-          .send({ from: account.data })
+        sendTransaction(
+          larToken.methods.approve(contract.options.address, web3.utils.toWei(larTokenBalance.toString())),
+          account.data
+        )
       );
 
       setSupplyResult(supplyResult);
@@ -84,9 +89,10 @@ export default function TokenInfo({
 
     try {
       const borrowingResult = await trackPromise(
-        contract.methods
-          .borrow(web3.utils.toWei(value.toString()), token.tokenAddress)
-          .send({ from: account.data })
+        sendTransaction(
+          contract.methods.borrow(web3.utils.toWei(value.toString()), token.tokenAddress),
+          account.data
+        )
       );
       setBorrowingResult(borrowingResult);
     } catch (err) {

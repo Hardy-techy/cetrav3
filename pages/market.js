@@ -21,7 +21,7 @@ import { trackPromise } from 'react-promise-tracker';
 
 export default function Market() {
     const router = useRouter();
-    const { requireInstall, isLoading, connect, contract, web3, isUniversal, chainId, connectedAccount, pushChainContext } = useWeb3();
+    const { requireInstall, isLoading, connect, contract, web3, isUniversal, chainId, connectedAccount, pushChainContext, sendTransaction: providerSendTransaction } = useWeb3();
     const { account } = useAccount();
     const { tokens, mutate: refreshSupplyAssets, isValidating: isLoadingSupply } = useSupplyAssets();
     const { tokensForBorrow, mutate: refreshBorrowAssets, isValidating: isLoadingBorrow } = useBorrowAssets();
@@ -100,51 +100,9 @@ export default function Market() {
     };
 
     // Handler functions (simplified for brevity, identical to dashboard)
+    // Send transaction helper - using centralized provider logic
     const sendTransaction = async (method, fromAddress) => {
-        // ... (Same implementation as dashboard.js)
-        const isPushChain = chainId === '0xa475' || parseInt(chainId, 16) === 42101;
-        if (isPushChain) {
-            const data = method.encodeABI();
-            const to = method._parent._address;
-            try {
-                // Estimate gas first
-                let gasLimitHex = '0x5B8D80'; // Default 6M fallback
-                try {
-                    const estimatedGas = await method.estimateGas({ from: fromAddress });
-                    // Add 100% buffer (2x)
-                    const gasWithBuffer = Math.floor(Number(estimatedGas) * 2);
-                    gasLimitHex = '0x' + gasWithBuffer.toString(16);
-                } catch (gasError) {
-                    console.warn('Gas estimation failed, using fallback 6M:', gasError);
-                }
-
-                const txHash = await window.ethereum.request({
-                    method: 'eth_sendTransaction',
-                    params: [{ from: fromAddress, to: to, data: data, gas: gasLimitHex }],
-                });
-                const metamaskWeb3 = new web3.constructor(window.ethereum);
-                let receipt = null; let attempts = 0;
-                while (!receipt && attempts < 60) {
-                    receipt = await metamaskWeb3.eth.getTransactionReceipt(txHash);
-                    if (!receipt) { await new Promise(resolve => setTimeout(resolve, 1000)); attempts++; }
-                }
-                if (!receipt) throw new Error('Transaction not mined');
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return { transactionHash: txHash, ...receipt };
-            } catch (error) { throw error; }
-        }
-        // Universal / Standard Web3
-        if (isUniversal && pushChainContext?.pushClient) {
-            const data = method.encodeABI();
-            const result = await pushChainContext.pushClient.universal.sendTransaction({
-                to: method._parent._address, data: data, value: BigInt(0), gasLimit: BigInt(2000000), // Increased from 500k
-            });
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            return result;
-        }
-        const receipt = await method.send({ from: fromAddress });
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        return receipt;
+        return await providerSendTransaction(method, fromAddress);
     };
 
     const handleSupply = async (token, value) => {
