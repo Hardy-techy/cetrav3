@@ -195,12 +195,14 @@ export default function Web3Provider({ children }) {
       // Clean Hex Address (Lowercase, Trimmed) - Strictly for Viem compatibility
       const cleanTo = to.trim().toLowerCase();
 
-      console.log("🚀 Transaction 'to' address (Clean Hex):", cleanTo, "Length:", cleanTo.length);
+      // DEBUG: Sending MINIMAL transaction to isolate "Invalid Address" error
+      // If this works (prompts user), then the 'data' payload is the issue
+      console.log("🚀 DEBUG: Sending MINIMAL tx to:", cleanTo);
 
       const txOptions = {
         to: cleanTo,
-        data: data,
-        value: BigInt(0), // Viem expects BigInt
+        // data: data, // Temporarily removed to test if address is valid
+        value: 0n, // Viem expects BigInt
       };
 
       try {
