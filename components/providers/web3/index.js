@@ -192,23 +192,26 @@ export default function Web3Provider({ children }) {
 
     // 1. Try Push Client (Universal / Wallet Kit)
     if (client?.universal) {
-      // Clean Hex Address (Lowercase, Trimmed) - Strictly for Viem compatibility
+      // Clean Hex Address
       const cleanTo = to.trim().toLowerCase();
+      console.log("🚀 Bypassing SDK, sending direct 'eth_sendTransaction' to:", cleanTo);
 
-      // DEBUG: Sending MINIMAL transaction to isolate "Invalid Address" error
-      // If this works (prompts user), then the 'data' payload is the issue
-      console.log("🚀 DEBUG: Sending MINIMAL tx to:", cleanTo);
-
-      const txOptions = {
+      const txParams = {
+        from: fromAddress,
         to: cleanTo,
-        // data: data, // Temporarily removed to test if address is valid
-        value: 0n, // Viem expects BigInt
+        data: data,
+        value: "0x0", // Standard RPC Hex for 0
       };
 
       try {
-        return await client.universal.sendTransaction(txOptions);
+        const txHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [txParams],
+        });
+        console.log("✅ Direct Transaction Hash:", txHash);
+        return { transactionHash: txHash };
       } catch (error) {
-        console.error("Push Chain Wallet Kit Error:", error);
+        console.error("Direct Transaction Failed:", error);
         throw error;
       }
     }
