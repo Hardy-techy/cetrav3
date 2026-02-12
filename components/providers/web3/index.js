@@ -169,205 +169,45 @@ export default function Web3Provider({ children }) {
 
   const { web3, provider, isLoading, contract } = web3Api;
 
-  // Centralized Transaction Sender
+  // Centralized Transaction Sender - Push Chain Wallet Kit Exclusive
   const sendTransaction = async (method, fromAddress) => {
-    const chainId = pushChainContext?.chainId;
-    const isPushChain = chainId === '0xa475' || (chainId && parseInt(chainId, 16) === 42101);
+    const data = method.encodeABI();
+    const to = method._parent._address;
 
-    // Create a proxy web3 for read operations / gas estimation to avoid rate limits
-    // We create this on demand to ensure we always have a fresh provider
-    const proxyWeb3 = new Web3(new Web3.providers.HttpProvider('/api/rpc'));
+    console.log('🚀 Sending transaction via Push Chain Wallet Kit', { from: fromAddress, to, data });
 
-    if (isPushChain) {
-      const data = method.encodeABI();
-      const to = method._parent._address;
-
-      console.log('Sending transaction on PushChain:', {
-        from: fromAddress,
+    // 1. Try Push Client (Universal / Wallet Kit)
+    if (pushClient) {
+      const txOptions = {
         to: to,
-        data: data.substring(0, 50) + '...',
-        chainId: chainId
-      });
+        data: data,
+        value: BigInt(0),
+      };
 
       try {
-        // 🛡️ GAS & PRICE ESTIMATION VIA PROXY (Bypasses Wallet Rate Limits)
-        let gasLimitHex = '0x5B8D80'; // Default 6M fallback
-        let gasPriceHex = undefined; // Let wallet decide if fetch fails
-
-        try {
-          // Use PROXY for estimatedGas and getGasPrice to avoid 429s
-          const [estimatedGas, currentGasPrice] = await Promise.all([
-            proxyWeb3.eth.estimateGas({
-              from: fromAddress,
-              to: to,
-              data: data
-            }),
-            proxyWeb3.eth.getGasPrice()
-          ]);
-
-          console.log('🔍 Proxy Gas Estimate:', estimatedGas);
-          console.log('🔍 Proxy Gas Price:', currentGasPrice);
-
-          // Add 200% buffer (2x) and Enforce Minimum 1M Gas
-          const gasWithBuffer = Math.max(Math.floor(Number(estimatedGas) * 2), 1000000);
-          gasLimitHex = '0x' + gasWithBuffer.toString(16);
-
-          // Add 10% tip to gas price for speed
-          const adjustedPrice = proxyWeb3.utils.toBN(currentGasPrice).mul(proxyWeb3.utils.toBN(110)).div(proxyWeb3.utils.toBN(100));
-          gasPriceHex = '0x' + adjustedPrice.toString(16);
-
-          console.log('✅ Using Proxy-calc params:', { gas: gasLimitHex, gasPrice: gasPriceHex });
-
-        } catch (gasError) {
-          console.warn('⚠️ Proxy gas estimation failed, falling back to safe defaults:', gasError);
-        }
-
-        const txParams = {
-          from: fromAddress,
-          to: to,
-          data: data,
-          gas: gasLimitHex,
-        };
-
-        if (gasPriceHex) {
-          txParams.gasPrice = gasPriceHex;
-        }
-
-        // Send 'blind' transaction to wallet - it just signs
-        const txHash = await provider.request({
-          method: 'eth_sendTransaction',
-          params: [txParams],
-        });
-
-        console.log('Transaction sent, hash:', txHash);
-
-        // Wait for transaction to be mined using PROXY WEB3 (Reliable)
-        let receipt = null;
-        let attempts = 0;
-        const maxAttempts = 60; // 60 seconds max
-
-        while (!receipt && attempts < maxAttempts) {
-          receipt = await proxyWeb3.eth.getTransactionReceipt(txHash);
-          if (!receipt) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            attempts++;
-          }
-        }
-
-        if (!receipt) {
-          throw new Error('Transaction not mined after 60 seconds (checked via Proxy)');
-        }
-
-        // Wait additional 2 seconds for blockchain state to propagate
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        console.log('Transaction receipt:', receipt);
-        return { transactionHash: txHash, ...receipt };
+        return await pushClient.universal.sendTransaction(txOptions);
       } catch (error) {
-        console.error('PushChain transaction error:', error);
+        console.error("Push Chain Wallet Kit Error:", error);
         throw error;
       }
     }
 
-    // Universal / Standard Web3 Logic
-    const isUniversal = pushChainContext?.account && pushChainContext?.isUniversal;
-
-    // Helper to get gas price and nonce safely via our proxy
-    let gasPrice = undefined;
-    let nonce = undefined;
-
-    try {
-      // Use PROXY WEB3 for these checks to ensure they succeed
-      const [price, txCount] = await Promise.all([
-        proxyWeb3.eth.getGasPrice(),
-        proxyWeb3.eth.getTransactionCount(fromAddress)
-      ]);
-
-      // Gas Price: Add small buffer (10%)
-      const gasPriceBN = proxyWeb3.utils.toBN(price);
-      gasPrice = gasPriceBN.mul(proxyWeb3.utils.toBN(110)).div(proxyWeb3.utils.toBN(100)).toString();
-
-      // Nonce
-      nonce = txCount;
-
-      console.log('⛽ Pre-fetched Data (via Proxy):', { gasPrice, nonce });
-    } catch (e) {
-      console.warn('Failed to pre-fetch tx data via proxy:', e);
-    }
-
-    if (isUniversal && pushClient) {
-      console.log("🔐 Signing via PushChain Universal Kit (Gasless/Universal Mode)");
-      const data = method.encodeABI();
-
-      const txOptions = {
-        to: method._parent._address,
-        data: data,
-        value: BigInt(0),
-        gasLimit: BigInt(2000000), // Increased from 500k
-      };
-
-      if (gasPrice) {
-        txOptions.gasPrice = BigInt(gasPrice);
-        txOptions.maxFeePerGas = BigInt(gasPrice);
-        txOptions.maxPriorityFeePerGas = BigInt(gasPrice);
-      }
-
-      if (nonce !== undefined) {
-        txOptions.nonce = BigInt(nonce);
-      }
-
-      const result = await pushClient.universal.sendTransaction(txOptions);
-
-      // Wait for blockchain state to update
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      return result;
-    }
-
-    // Standard Web3 / MetaMask Fallback
-    // Since 'contract' is read-only, we MUST use provider.request() to sign
-    const data = method.encodeABI();
-    const to = method._parent._address;
-
-    const txParams = {
-      from: fromAddress,
-      to: to,
-      data: data,
-    };
-
-    if (gasPrice) txParams.gasPrice = parseInt(gasPrice).toString(16); // Convert to Hex for RPC
-    if (nonce !== undefined) txParams.nonce = parseInt(nonce).toString(16);
-
-    console.log('Sending standard transaction via Wallet:', txParams);
-
-    const txHash = await provider.request({
-      method: 'eth_sendTransaction',
-      params: [txParams],
-    });
-
-    console.log('Standard Transaction sent, hash:', txHash);
-
-    // Wait for transaction to be mined using PROXY WEB3 (Reliable)
-    let receipt = null;
-    let attempts = 0;
-    const maxAttempts = 60;
-
-    while (!receipt && attempts < maxAttempts) {
-      receipt = await proxyWeb3.eth.getTransactionReceipt(txHash);
-      if (!receipt) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        attempts++;
+    // 2. Try Universal Signer Context (Alternative via SDK)
+    if (pushChainContext?.universalSigner) {
+      try {
+        const tx = {
+          to: to,
+          data: data,
+          value: 0
+        };
+        return await pushChainContext.universalSigner.sendTransaction(tx);
+      } catch (error) {
+        console.error("Push Chain Universal Signer Error:", error);
+        throw error;
       }
     }
 
-    if (!receipt) {
-      throw new Error('Transaction not mined after 60 seconds (checked via Proxy)');
-    }
-
-    // Wait additional 2 seconds for blockchain state to propagate
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    return { transactionHash: txHash, ...receipt };
+    throw new Error("Push Chain Wallet Kit not initialized. Please connect your wallet.");
   };
 
   // Memoize the context value to prevent unnecessary re-renders
