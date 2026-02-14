@@ -86,23 +86,44 @@ export default function Web3Provider({ children }) {
   useEffect(() => {
     let newAccount = null;
 
+    // Helper to sanitize address (remove CAIP namespaces if present)
+    const sanitizeAccount = (addr) => {
+      if (!addr) return null;
+      if (typeof addr !== 'string') return null;
+      // Split by ':' and take the last part (usually the address)
+      const parts = addr.split(':');
+      return parts[parts.length - 1];
+    };
+
+    let rawAccount = null;
+
     if (pushWallet?.universalAccount?.address) {
-      newAccount = pushWallet.universalAccount.address;
+      console.log("DEBUG: Selected Account from pushWallet.universalAccount.address");
+      rawAccount = pushWallet.universalAccount.address;
     } else if (pushWallet?.universalAccount?.account) {
-      newAccount = pushWallet.universalAccount.account;
+      console.log("DEBUG: Selected Account from pushWallet.universalAccount.account");
+      rawAccount = pushWallet.universalAccount.account;
     } else if (pushWallet?.universalAccount && typeof pushWallet.universalAccount === 'string') {
-      newAccount = pushWallet.universalAccount;
+      console.log("DEBUG: Selected Account from pushWallet.universalAccount (string)");
+      rawAccount = pushWallet.universalAccount;
     } else if (pushChainContext?.account && pushChainContext?.isUniversal) {
-      newAccount = pushChainContext.account;
+      console.log("DEBUG: Selected Account from pushChainContext.account (isUniversal)");
+      rawAccount = pushChainContext.account;
     } else if (pushWallet?.account?.address) {
-      newAccount = pushWallet.account.address;
+      console.log("DEBUG: Selected Account from pushWallet.account.address");
+      rawAccount = pushWallet.account.address;
     } else if (pushWallet?.account && typeof pushWallet.account === 'string') {
-      newAccount = pushWallet.account;
+      console.log("DEBUG: Selected Account from pushWallet.account (string)");
+      rawAccount = pushWallet.account;
     } else if (web3Api.provider?.selectedAddress) {
-      newAccount = web3Api.provider.selectedAddress;
+      console.log("DEBUG: Selected Account from web3Api.provider.selectedAddress");
+      rawAccount = web3Api.provider.selectedAddress;
     }
 
+    newAccount = sanitizeAccount(rawAccount);
+
     if (newAccount !== connectedAccountState) {
+      console.log("Connect Account Changed:", { raw: rawAccount, sanitized: newAccount });
       setConnectedAccountState(newAccount);
     }
   }, [
@@ -204,15 +225,28 @@ export default function Web3Provider({ children }) {
         value: 0n, // Viem/SDK expects BigInt
       };
 
+      console.log("🚀 DEBUG: Push SDK Tx Payload:", {
+        to: cleanTo,
+        dataLen: data ? data.length : 0,
+        dataShort: data ? data.substring(0, 50) + '...' : 'NONE',
+        value: '0n'
+      });
+
       try {
         // Now that PushChainProvider is fixed with correct rpcUrls map, this should work!
         const txResponse = await client.universal.sendTransaction(txParams);
         console.log("✅ SDK Transaction Response:", txResponse);
 
-        // SDK returns object with hash, or we might need to wait? 
-        // Docs say: returns Promise<TransactionReceipt> (actually TxResponse which has .wait())
-        // My previous code expected { transactionHash: ... } or compatible object
+        // CRITICAL: Wait for transaction to be mined!
+        // The SDK returns a response object with a .wait() method (ethers-like)
+        if (txResponse.wait) {
+          console.log("⏳ Waiting for transaction confirmation...");
+          const receipt = await txResponse.wait();
+          console.log("✅ Transaction Mined:", receipt);
+          return receipt;
+        }
 
+        // Fallback if no .wait() (shouldn't happen with standard SDK)
         return { transactionHash: txResponse.hash };
       } catch (error) {
         console.error("Push SDK Transaction Failed:", error);

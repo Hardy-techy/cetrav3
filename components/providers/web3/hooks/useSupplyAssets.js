@@ -38,6 +38,7 @@ export const handler = (web3, contract, connectedAccount) => () => {
         // Start immediately - no delay
 
         const tokens = await contract.methods.getTokensForLendingArray().call()
+        console.log("DEBUG: Lending Contract returned tokens:", tokens);
 
         // OLD token addresses to filter out (6 decimal versions)
         const OLD_TOKENS = [
@@ -52,7 +53,7 @@ export const handler = (web3, contract, connectedAccount) => () => {
             !OLD_TOKENS.includes(currentToken.tokenAddress)
           );
 
-        const BATCH_SIZE = 3;
+        const BATCH_SIZE = 15;
         const results = [];
 
         for (let i = 0; i < filteredTokens.length; i += BATCH_SIZE) {
@@ -62,6 +63,7 @@ export const handler = (web3, contract, connectedAccount) => () => {
               try {
                 return await normalizeToken(web3, contract, currentToken, connectedAccount, proxyWeb3);
               } catch (e) {
+                console.error(`DEBUG: Failed to normalize token ${currentToken.tokenAddress || currentToken[0]}:`, e);
                 return null;
               }
             })

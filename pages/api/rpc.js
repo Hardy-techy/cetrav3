@@ -3,7 +3,7 @@
 
 // 🔐 PRIVATE RPC for all READ operations (eth_call, eth_getBalance, etc.)
 // 🌐 PUBLIC nodes ONLY for WRITE operations (eth_sendTransaction, eth_estimateGas)
-const PRIVATE_RPC = process.env.PRIVATE_RPC_URL || 'https://rpc.cetra.app'; // Your private RPC
+const PRIVATE_RPC = process.env.PRIVATE_RPC_URL || 'https://evm.rpc-testnet-donut-node1.push.org'; // Using Public Node for Reads to match user's wallet state
 const PUBLIC_NODES = [
     'https://evm.rpc-testnet-donut-node1.push.org',
     'https://evm.rpc-testnet-donut-node2.push.org',

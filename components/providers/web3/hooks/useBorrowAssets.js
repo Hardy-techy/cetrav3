@@ -49,7 +49,7 @@ export const handler = (web3, contract, connectedAccount) => () => {
             !OLD_TOKENS.includes(currentToken.tokenAddress)
           );
 
-        const BATCH_SIZE = 3;
+        const BATCH_SIZE = 15;
         const results = [];
 
         for (let i = 0; i < filteredTokens.length; i += BATCH_SIZE) {

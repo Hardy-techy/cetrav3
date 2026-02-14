@@ -208,8 +208,16 @@ export default function Markets() {
       console.log('Supply successful:', result);
       setTxResult(result);
 
-      // Immediately refresh data - transaction is already mined at this point
+      // FORCE CLEAR CACHE IMMEDIATELY
+      const { clearDynamicCache } = await import('../utils/rpcCache');
+      clearDynamicCache();
+
+      // Aggressive Refresh
       await refreshAllData('supply');
+
+      // Double check after 2 seconds for RPC propagation
+      setTimeout(() => refreshAllData('supply'), 2000);
+      setTimeout(() => refreshAllData('supply'), 5000);
     } catch (err) {
       console.error('Supply error:', err);
       setTxError(err);
@@ -233,8 +241,16 @@ export default function Markets() {
       console.log('Borrow successful:', result);
       setTxResult(result);
 
-      // Immediately refresh data - transaction is already mined at this point
+      // FORCE CLEAR CACHE IMMEDIATELY
+      const { clearDynamicCache } = await import('../utils/rpcCache');
+      clearDynamicCache();
+
+      // Aggressive Refresh
       await refreshAllData('borrow');
+
+      // Double check after 2 seconds for RPC propagation
+      setTimeout(() => refreshAllData('borrow'), 2000);
+      setTimeout(() => refreshAllData('borrow'), 5000);
     } catch (err) {
       console.error('Borrow error:', err);
       setTxError(err);
